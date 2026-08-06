@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-Local agent for the Garden Store using Ollama + A2A.
+Local agent for any A2A-compatible service, using Ollama.
+
+Capabilities are discovered at runtime from the agent card — this script
+has no hardcoded knowledge of the store's actions or structure.
 
 Requirements:
     pip install openai httpx
@@ -19,111 +22,59 @@ import sys
 import httpx
 from openai import OpenAI
 
-# ---------------------------------------------------------------------------
-# Tools — one per A2A intent action
-# ---------------------------------------------------------------------------
-
+# Single generic tool — the LLM constructs the intent from the card description.
 TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
-            "name": "list_categories",
-            "description": "List all product categories available in the store.",
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "browse_products",
-            "description": "Browse products, optionally filtered by category or max price.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "category": {"type": "string", "description": "Category name to filter by"},
-                    "max_price": {"type": "number", "description": "Maximum price in GBP"},
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_product",
-            "description": "Get full details for a single product by its ID.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "product_id": {"type": "integer", "description": "Product ID"},
-                },
-                "required": ["product_id"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "create_customer",
+            "name": "call_agent",
             "description": (
-                "Register a new customer or update an existing customer's name by email. "
-                "Always call this before checkout if the customer may not exist yet."
+                "Send a JSON intent to the agent and receive a response. "
+                "Construct the intent object exactly as documented in the available actions."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string"},
-                    "email": {"type": "string"},
+                    "intent": {
+                        "type": "object",
+                        "description": (
+                            'A JSON object with an "action" field and the parameters '
+                            "for that action, as documented in the system prompt."
+                        ),
+                    }
                 },
-                "required": ["name", "email"],
+                "required": ["intent"],
             },
         },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "checkout",
-            "description": "Place an order for a customer. Customer must exist first.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "customer_email": {"type": "string"},
-                    "items": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "product_id": {"type": "integer"},
-                                "quantity": {"type": "integer"},
-                            },
-                            "required": ["product_id", "quantity"],
-                        },
-                    },
-                },
-                "required": ["customer_email", "items"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_purchases",
-            "description": "List purchase history for a customer by email.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "customer_email": {"type": "string"},
-                },
-                "required": ["customer_email"],
-            },
-        },
-    },
+    }
 ]
 
 
-# ---------------------------------------------------------------------------
-# A2A client
-# ---------------------------------------------------------------------------
+def fetch_card(store_base: str) -> dict:
+    r = httpx.get(f"{store_base}/.well-known/agent-card.json", timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+
+def build_system_prompt(card: dict) -> str:
+    skills = card.get("skills", [])
+    skills_text = "\n\n".join(
+        "Action: {name}\n{description}\nExample intent: {example}".format(
+            name=s["name"],
+            description=s["description"],
+            example=s.get("examples", ["(none)"])[0],
+        )
+        for s in skills
+    )
+    return (
+        f"You are a helpful assistant for {card['name']}.\n\n"
+        f"{card['description']}\n\n"
+        f"## Available actions\n\n{skills_text}\n\n"
+        "Use the call_agent tool to send intents. "
+        "Summarise results clearly — do not dump raw JSON at the user. "
+        "Always confirm the items and total with the user before calling checkout."
+    )
+
 
 _rpc_seq = 0
 
@@ -157,29 +108,10 @@ def a2a_call(store_base: str, intent: dict) -> dict:
     return json.loads(text)
 
 
-def fetch_card(store_base: str) -> dict:
-    r = httpx.get(f"{store_base}/.well-known/agent-card.json", timeout=10)
-    r.raise_for_status()
-    return r.json()
-
-
-# ---------------------------------------------------------------------------
-# Agent loop
-# ---------------------------------------------------------------------------
-
 def run(model: str, store_base: str, ollama_base: str) -> None:
     card = fetch_card(store_base)
-
+    system = build_system_prompt(card)
     llm = OpenAI(base_url=f"{ollama_base}/v1", api_key="ollama")
-
-    system = (
-        f"You are a helpful shopping assistant for the {card['name']}. "
-        f"{card['description']} "
-        "Use the provided tools to fulfil the user's requests. "
-        "When browsing, summarise results concisely — don't dump raw JSON at the user. "
-        "Always confirm the items and total before calling checkout. "
-        "If a checkout requires creating a customer first, do so automatically without asking."
-    )
 
     messages: list[dict] = [{"role": "system", "content": system}]
     print(f"Connected to {card['name']} at {store_base}")
@@ -197,7 +129,6 @@ def run(model: str, store_base: str, ollama_base: str) -> None:
 
         messages.append({"role": "user", "content": user_input})
 
-        # Inner loop: keep processing tool calls until the model gives a plain reply.
         while True:
             response = llm.chat.completions.create(
                 model=model,
@@ -214,9 +145,11 @@ def run(model: str, store_base: str, ollama_base: str) -> None:
 
             for tc in msg.tool_calls:
                 args = json.loads(tc.function.arguments)
-                print(f"  → {tc.function.name}({json.dumps(args)})")
-                result = a2a_call(store_base, {"action": tc.function.name, **args})
-                print(f"  ← {json.dumps(result)[:120]}{'…' if len(json.dumps(result)) > 120 else ''}")
+                intent = args.get("intent", args)
+                print(f"  → {json.dumps(intent)}")
+                result = a2a_call(store_base, intent)
+                summary = json.dumps(result)
+                print(f"  ← {summary[:120]}{'…' if len(summary) > 120 else ''}")
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
@@ -224,14 +157,10 @@ def run(model: str, store_base: str, ollama_base: str) -> None:
                 })
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Garden Store local agent")
+    parser = argparse.ArgumentParser(description="Generic A2A agent powered by Ollama")
     parser.add_argument("--model", default="qwen2.5:7b", help="Ollama model name")
-    parser.add_argument("--store", default="http://localhost:8000", help="Garden store base URL")
+    parser.add_argument("--store", default="http://localhost:8000", help="A2A service base URL")
     parser.add_argument("--ollama", default="http://localhost:11434", help="Ollama base URL")
     args = parser.parse_args()
     run(model=args.model, store_base=args.store, ollama_base=args.ollama)

@@ -2,7 +2,7 @@
 
 This guide walks through setting up a local AI agent that can browse the garden store and place orders on your behalf, using the A2A interface.
 
-The agent discovers everything it needs from the agent card at `/.well-known/agent-card.json` — it has no hardcoded knowledge of the store's products or structure.
+The agent discovers everything it needs from the agent card at `/.well-known/agent-card.json` — it has no hardcoded knowledge of the store's actions, parameters, or structure. The same script works against any A2A-compatible service; point it at a different `--store` URL and it discovers that service's capabilities automatically.
 
 ## How it works
 
@@ -98,9 +98,9 @@ Agent: Alice has one previous order: 2 packets of Sunflower Seeds, purchased tod
 
 ## How the agent card enables this
 
-The agent fetches `/.well-known/agent-card.json` on startup. That card documents every available action, the fields each one expects, and what the response looks like. The agent uses this to build its tool definitions — no hardcoded knowledge of the store is needed.
+The agent fetches `/.well-known/agent-card.json` on startup and builds the entire system prompt from it — the service name, description, and every skill with its parameter schema and example intent. The code exposes a single generic transport tool (`call_agent`) that sends whatever intent JSON the LLM constructs.
 
-This means the same agent script would work against any A2A-compatible service. Swap `--store` to point at a different service and the agent discovers that service's capabilities automatically.
+The LLM reads the card and figures out what to call and how to call it. The script itself has no knowledge of `browse_products`, `checkout`, or any other action — those exist only in the card.
 
 ## A note on trust
 

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app.database import get_pool
 from app.models import row_to_dict
+from app.services import get_customer_by_email, upsert_customer
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
 
@@ -22,11 +23,10 @@ async def lookup_customer(
     email: str,
     pool: asyncpg.Pool = Depends(get_pool),
 ) -> dict[str, Any]:
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT * FROM customers WHERE email = $1", email)
-    if row is None:
+    customer = await get_customer_by_email(pool, email)
+    if customer is None:
         raise HTTPException(status_code=404, detail="customer_not_found")
-    return row_to_dict(row)
+    return customer
 
 
 @router.get("")
@@ -39,20 +39,8 @@ async def list_customers(
 
 
 @router.post("", status_code=201)
-async def upsert_customer(
+async def upsert_customer_route(
     body: CustomerIn,
     pool: asyncpg.Pool = Depends(get_pool),
 ) -> dict[str, Any]:
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO customers (name, email)
-            VALUES ($1, $2)
-            ON CONFLICT (email) DO UPDATE
-                SET name = EXCLUDED.name
-            RETURNING *
-            """,
-            body.name,
-            body.email,
-        )
-    return row_to_dict(row)
+    return await upsert_customer(pool, name=body.name, email=body.email)

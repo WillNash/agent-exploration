@@ -93,8 +93,7 @@ async function submit() {
 
     const task = await a2aRpc(JSON.stringify(intent))
 
-    const artifactText = task?.status?.artifacts?.[0]?.parts?.[0]?.text
-      ?? task?.artifacts?.[0]?.parts?.[0]?.text
+    const artifactText = task?.message?.parts?.[0]?.text
 
     if (!artifactText) throw new Error('No response from agent')
 

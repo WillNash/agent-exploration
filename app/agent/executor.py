@@ -6,10 +6,9 @@ from typing import Any
 
 import asyncpg
 
-from a2a.helpers.proto_helpers import new_text_part
+from a2a.helpers.proto_helpers import new_text_message
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
-from a2a.server.tasks.task_updater import TaskUpdater
 
 from app.agent.intents import (
     BrowseProductsIntent,
@@ -63,19 +62,12 @@ class GardenStoreExecutor(AgentExecutor):
         self._pool = pool
 
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
-        updater = TaskUpdater(event_queue, context.task_id, context.context_id)
-        await updater.start_work()
-
         text = context.get_user_input()
         intent: Intent = parse_intent(text)
-
         result = await self._dispatch(intent)
-
-        await updater.add_artifact(
-            parts=[new_text_part(json.dumps(result))],
-            last_chunk=True,
-        )
-        await updater.complete()
+        # Simple pattern: enqueue a single Message and return.
+        # No Task lifecycle needed for this synchronous deterministic agent.
+        await event_queue.enqueue_event(new_text_message(json.dumps(result)))
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         raise NotImplementedError("cancellation is not supported")

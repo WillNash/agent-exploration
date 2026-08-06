@@ -29,6 +29,9 @@ export const createCustomer = (data) => request('POST', '/api/customers', data)
 export const fetchPurchases = (customerId) =>
   request('GET', `/api/purchases/${customerId}`)
 
+export const lookupCustomer = (email) =>
+  request('GET', `/api/customers/lookup?${new URLSearchParams({ email })}`)
+
 let _rpcSeq = 0
 
 export async function a2aRpc(messageText) {

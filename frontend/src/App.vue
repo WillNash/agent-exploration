@@ -1,25 +1,61 @@
 <template>
   <header>
     <nav>
-      <RouterLink to="/">Products</RouterLink>
-      <RouterLink to="/cart">
-        Cart
-        <span v-if="cartCount > 0" class="badge">{{ cartCount }}</span>
-      </RouterLink>
-      <RouterLink to="/checkout">Checkout</RouterLink>
-      <RouterLink to="/agent">Agent Demo</RouterLink>
+      <div class="nav-links">
+        <RouterLink to="/">Products</RouterLink>
+        <RouterLink to="/cart">
+          Cart
+          <span v-if="cartCount > 0" class="badge">{{ cartCount }}</span>
+        </RouterLink>
+        <RouterLink to="/checkout">Checkout</RouterLink>
+        <RouterLink to="/agent">Agent Demo</RouterLink>
+      </div>
+      <div class="auth-area">
+        <template v-if="isLoggedIn">
+          <span class="user-name">{{ current.name }}</span>
+          <button class="btn-nav-ghost" @click="handleLogout">Sign out</button>
+        </template>
+        <template v-else>
+          <button class="btn-nav-ghost" @click="openAuth('signin')">Sign in</button>
+          <button class="btn-nav-solid" @click="openAuth('register')">Create account</button>
+        </template>
+      </div>
     </nav>
   </header>
+
   <main>
     <RouterView />
   </main>
+
+  <AuthModal
+    v-if="showModal"
+    :initial-mode="authMode"
+    @close="showModal = false"
+  />
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
+import AuthModal from './components/AuthModal.vue'
 import { useCart } from './stores/cart.js'
+import { useUser } from './stores/user.js'
 
-const { cartCount } = useCart()
+const { cartCount, clearCart } = useCart()
+const { current, isLoggedIn, logout } = useUser()
+
+const showModal = ref(false)
+const authMode = ref('signin')
+
+function openAuth(mode) {
+  authMode.value = mode
+  showModal.value = true
+}
+
+function handleLogout() {
+  logout()
+  clearCart()
+}
 </script>
 
 <style>
@@ -38,7 +74,19 @@ header {
 
 nav {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nav-links {
+  display: flex;
   gap: 1.5rem;
+  align-items: center;
+}
+
+.auth-area {
+  display: flex;
+  gap: 0.5rem;
   align-items: center;
 }
 
@@ -62,6 +110,41 @@ nav a:hover, nav a.router-link-active {
   padding: 0.1rem 0.45rem;
   margin-left: 0.25rem;
   font-weight: 700;
+}
+
+.user-name {
+  color: #d4edbc;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.btn-nav-ghost {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: #d4edbc;
+  border-radius: 6px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-nav-ghost:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.btn-nav-solid {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #fff;
+  border-radius: 6px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-nav-solid:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 main {

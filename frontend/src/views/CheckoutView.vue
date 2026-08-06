@@ -41,14 +41,20 @@
         </div>
 
         <form @submit.prevent="submit">
-          <div class="field">
-            <label for="name">Full name</label>
-            <input id="name" v-model="name" type="text" required placeholder="Alice Green" />
+          <div v-if="isLoggedIn" class="logged-in-as">
+            <span>Checking out as <strong>{{ current.name }}</strong> ({{ current.email }})</span>
+            <span class="not-you">Not you? Sign out from the menu above.</span>
           </div>
-          <div class="field">
-            <label for="email">Email</label>
-            <input id="email" v-model="email" type="email" required placeholder="alice@example.com" />
-          </div>
+          <template v-else>
+            <div class="field">
+              <label for="name">Full name</label>
+              <input id="name" v-model="name" type="text" required placeholder="Alice Green" />
+            </div>
+            <div class="field">
+              <label for="email">Email</label>
+              <input id="email" v-model="email" type="email" required placeholder="alice@example.com" />
+            </div>
+          </template>
           <p v-if="error" class="error">{{ error }}</p>
           <button class="btn-primary" type="submit" :disabled="submitting">
             {{ submitting ? 'Placing order…' : 'Place order' }}
@@ -64,8 +70,10 @@ import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { createCustomer, a2aRpc } from '../api/client.js'
 import { useCart } from '../stores/cart.js'
+import { useUser } from '../stores/user.js'
 
 const { items, cartTotal, clearCart } = useCart()
+const { current, isLoggedIn, login } = useUser()
 
 const name = ref('')
 const email = ref('')
@@ -80,11 +88,17 @@ async function submit() {
   submitting.value = true
   error.value = null
   try {
-    await createCustomer({ name: name.value, email: email.value })
+    const customerEmail = isLoggedIn.value ? current.value.email : email.value
+    const customerName = isLoggedIn.value ? current.value.name : name.value
+
+    if (!isLoggedIn.value) {
+      const customer = await createCustomer({ name: customerName, email: customerEmail })
+      login(customer)
+    }
 
     const intent = {
       action: 'checkout',
-      customer_email: email.value,
+      customer_email: customerEmail,
       items: items.value.map((i) => ({
         product_id: i.product.id,
         quantity: i.quantity,
@@ -94,13 +108,12 @@ async function submit() {
     const task = await a2aRpc(JSON.stringify(intent))
 
     const artifactText = task?.message?.parts?.[0]?.text
-
     if (!artifactText) throw new Error('No response from agent')
 
     const result = JSON.parse(artifactText)
     if (result.error) throw new Error(result.error)
 
-    confirmedName.value = name.value
+    confirmedName.value = customerName
     confirmedItems.value = result.items ?? []
     orderTotal.value = (result.order_total ?? 0).toFixed(2)
     confirmed.value = true
@@ -162,6 +175,23 @@ form {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+.logged-in-as {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.6rem 0.75rem;
+  background: #f0f7ea;
+  border: 1px solid #c5dfa8;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  color: #3a5c2c;
+}
+
+.not-you {
+  font-size: 0.78rem;
+  color: #7a9a6a;
 }
 
 .field {

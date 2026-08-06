@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 import asyncpg
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, EmailStr
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from app.database import get_pool
 from app.models import row_to_dict
@@ -15,6 +15,18 @@ router = APIRouter(prefix="/api/customers", tags=["customers"])
 class CustomerIn(BaseModel):
     name: str
     email: str
+
+
+@router.get("/lookup")
+async def lookup_customer(
+    email: str,
+    pool: asyncpg.Pool = Depends(get_pool),
+) -> dict[str, Any]:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM customers WHERE email = $1", email)
+    if row is None:
+        raise HTTPException(status_code=404, detail="customer_not_found")
+    return row_to_dict(row)
 
 
 @router.get("")

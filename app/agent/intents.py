@@ -17,6 +17,17 @@ class GetProductIntent:
 
 
 @dataclass(slots=True, frozen=True)
+class ListCategoriesIntent:
+    pass
+
+
+@dataclass(slots=True, frozen=True)
+class CreateCustomerIntent:
+    name: str
+    email: str
+
+
+@dataclass(slots=True, frozen=True)
 class CheckoutItemIntent:
     product_id: int
     quantity: int
@@ -41,6 +52,8 @@ class UnknownIntent:
 Intent = (
     BrowseProductsIntent
     | GetProductIntent
+    | ListCategoriesIntent
+    | CreateCustomerIntent
     | CheckoutIntent
     | ListPurchasesIntent
     | UnknownIntent
@@ -65,6 +78,12 @@ def parse_intent(text: str) -> Intent:
             if "product_id" not in data:
                 return UnknownIntent(raw_text=text)
             return GetProductIntent(product_id=int(data["product_id"]))
+        case "list_categories":
+            return ListCategoriesIntent()
+        case "create_customer":
+            if "name" not in data or "email" not in data:
+                return UnknownIntent(raw_text=text)
+            return CreateCustomerIntent(name=str(data["name"]), email=str(data["email"]))
         case "checkout":
             if "customer_email" not in data or "items" not in data:
                 return UnknownIntent(raw_text=text)

@@ -13,8 +13,10 @@ from a2a.server.events import EventQueue
 from app.agent.intents import (
     BrowseProductsIntent,
     CheckoutIntent,
+    CreateCustomerIntent,
     GetProductIntent,
     Intent,
+    ListCategoriesIntent,
     ListPurchasesIntent,
     UnknownIntent,
     parse_intent,
@@ -23,12 +25,20 @@ from app.agent.intents import (
 _HELP = {
     "supported_actions": [
         {
+            "action": "list_categories",
+            "params": {},
+        },
+        {
             "action": "browse_products",
             "params": {"category": "optional string", "max_price": "optional number"},
         },
         {
             "action": "get_product",
             "params": {"product_id": "integer"},
+        },
+        {
+            "action": "create_customer",
+            "params": {"name": "string", "email": "string"},
         },
         {
             "action": "checkout",
@@ -74,16 +84,28 @@ class GardenStoreExecutor(AgentExecutor):
 
     async def _dispatch(self, intent: Intent) -> Any:
         match intent:
+            case ListCategoriesIntent():
+                return await self._list_categories()
             case BrowseProductsIntent():
                 return await self._browse_products(intent)
             case GetProductIntent():
                 return await self._get_product(intent)
+            case CreateCustomerIntent():
+                return await self._create_customer(intent)
             case CheckoutIntent():
                 return await self._checkout(intent)
             case ListPurchasesIntent():
                 return await self._list_purchases(intent)
             case UnknownIntent():
                 return {"error": "unknown_intent", "help": _HELP}
+
+    async def _list_categories(self) -> list[str]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT DISTINCT category FROM products "
+                "WHERE category IS NOT NULL ORDER BY category"
+            )
+        return [r["category"] for r in rows]
 
     async def _browse_products(self, intent: BrowseProductsIntent) -> list[dict[str, Any]]:
         query = "SELECT * FROM products WHERE 1=1"
@@ -113,13 +135,32 @@ class GardenStoreExecutor(AgentExecutor):
             return {"error": "product_not_found", "product_id": intent.product_id}
         return _row(row)
 
+    async def _create_customer(self, intent: CreateCustomerIntent) -> dict[str, Any]:
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO customers (name, email)
+                VALUES ($1, $2)
+                ON CONFLICT (email) DO UPDATE
+                    SET name = EXCLUDED.name
+                RETURNING *
+                """,
+                intent.name,
+                intent.email,
+            )
+        return _row(row)
+
     async def _checkout(self, intent: CheckoutIntent) -> dict[str, Any]:
         async with self._pool.acquire() as conn:
             customer = await conn.fetchrow(
                 "SELECT id FROM customers WHERE email = $1", intent.customer_email
             )
             if customer is None:
-                return {"error": "customer_not_found", "email": intent.customer_email}
+                return {
+                    "error": "customer_not_found",
+                    "email": intent.customer_email,
+                    "hint": "Call create_customer first with {action: create_customer, name, email}",
+                }
 
             customer_id: int = customer["id"]
             order_rows: list[dict[str, Any]] = []
@@ -127,7 +168,8 @@ class GardenStoreExecutor(AgentExecutor):
             async with conn.transaction():
                 for item in intent.items:
                     product = await conn.fetchrow(
-                        "SELECT id, name, price, stock_qty FROM products WHERE id = $1 FOR UPDATE",
+                        "SELECT id, name, price, stock_qty FROM products "
+                        "WHERE id = $1 FOR UPDATE",
                         item.product_id,
                     )
                     if product is None:

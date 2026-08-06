@@ -56,9 +56,14 @@ const sending = ref(false)
 const agentCard = ref(null)
 
 const examples = [
+  { label: 'List categories', json: JSON.stringify({ action: 'list_categories' }) },
   { label: 'Browse all', json: JSON.stringify({ action: 'browse_products' }) },
   { label: 'Browse seeds', json: JSON.stringify({ action: 'browse_products', category: 'seeds' }) },
   { label: 'Get product #1', json: JSON.stringify({ action: 'get_product', product_id: 1 }) },
+  {
+    label: 'Create customer',
+    json: JSON.stringify({ action: 'create_customer', name: 'Alice Green', email: 'alice@example.com' }),
+  },
   {
     label: 'Checkout',
     json: JSON.stringify({

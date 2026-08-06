@@ -35,14 +35,16 @@ export async function a2aRpc(messageText) {
   const id = `rpc-${++_rpcSeq}-${Date.now()}`
   const messageId = `msg-${Date.now()}`
 
+  // SDK uses gRPC-style PascalCase method names. Role and Part shape are
+  // protobuf enum/message names, not the JSON-spec strings used in older docs.
   const envelope = {
     jsonrpc: '2.0',
     id,
-    method: 'message/send',
+    method: 'SendMessage',
     params: {
       message: {
-        role: 'user',
-        parts: [{ kind: 'text', text: messageText }],
+        role: 'ROLE_USER',
+        parts: [{ text: messageText }],
         messageId,
       },
     },

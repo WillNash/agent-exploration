@@ -38,6 +38,14 @@ export const fetchProduct = (id) => request('GET', `/api/products/${id}`)
 export const register = (data) => request('POST', '/auth/register', data)
 export const login = (data) => request('POST', '/auth/login', data)
 
+export const createDeveloperToken = (name) => request('POST', '/auth/tokens', { name })
+export const listDeveloperTokens = () => request('GET', '/auth/tokens')
+export const revokeDeveloperToken = (id) =>
+  fetch(`/auth/tokens/${id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${getToken()}` },
+  }).then((r) => { if (!r.ok) throw new Error(r.status) })
+
 export const fetchPurchases = (customerId) =>
   request('GET', `/api/purchases/${customerId}`)
 

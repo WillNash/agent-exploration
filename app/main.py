@@ -22,8 +22,9 @@ from a2a.server.tasks import InMemoryTaskStore
 from app.agent.card import garden_card
 from app.agent.executor import GardenStoreExecutor
 from app.auth import current_user, decode_token
-from app.database import create_pool
+from app.database import create_pool, get_app_pool, set_app_pool
 from app.routers import auth, customers, health, products, purchases
+from app.services import is_token_revoked
 
 load_dotenv()
 
@@ -44,7 +45,14 @@ class AuthMiddleware:
             auth_header = headers.get(b"authorization", b"").decode()
             user = None
             if auth_header.startswith("Bearer "):
-                user = decode_token(auth_header[7:])
+                token_data = decode_token(auth_header[7:])
+                if token_data is not None:
+                    if token_data.get("type") == "developer_token":
+                        pool = get_app_pool()
+                        if pool and not await is_token_revoked(pool, token_data["jti"]):
+                            user = token_data
+                    else:
+                        user = token_data
             token = current_user.set(user)
             try:
                 await self.app(scope, receive, send)
@@ -58,6 +66,7 @@ class AuthMiddleware:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     pool = await create_pool(os.environ["DATABASE_URL"])
     app.state.pool = pool
+    set_app_pool(pool)
 
     executor = GardenStoreExecutor(pool=pool)
     handler = DefaultRequestHandler(

@@ -12,7 +12,7 @@
       </div>
       <div class="auth-area">
         <template v-if="isLoggedIn">
-          <span class="user-name">{{ current.name }}</span>
+          <RouterLink to="/account" class="user-name">{{ current.name }}</RouterLink>
           <button class="btn-nav-ghost" @click="handleLogout">Sign out</button>
         </template>
         <template v-else>

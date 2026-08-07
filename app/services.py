@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -246,3 +247,59 @@ async def list_purchases(
             customer_id,
         )
     return [row_to_dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Developer token services
+# ---------------------------------------------------------------------------
+
+async def create_developer_token(
+    pool: asyncpg.Pool, *, customer_id: int, name: str, email: str
+) -> dict[str, Any]:
+    from app.auth import create_developer_token_jwt
+    jti = str(uuid.uuid4())
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "INSERT INTO developer_tokens (customer_id, name, jti) VALUES ($1, $2, $3) RETURNING *",
+            customer_id,
+            name,
+            jti,
+        )
+    result = row_to_dict(row)
+    result["token"] = create_developer_token_jwt(customer_id, email, jti)
+    return result
+
+
+async def list_developer_tokens(
+    pool: asyncpg.Pool, customer_id: int
+) -> list[dict[str, Any]]:
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, customer_id, name, created_at, revoked_at "
+            "FROM developer_tokens WHERE customer_id = $1 ORDER BY created_at DESC",
+            customer_id,
+        )
+    return [row_to_dict(r) for r in rows]
+
+
+async def revoke_developer_token(
+    pool: asyncpg.Pool, token_id: int, customer_id: int
+) -> bool:
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "UPDATE developer_tokens SET revoked_at = NOW() "
+            "WHERE id = $1 AND customer_id = $2 AND revoked_at IS NULL",
+            token_id,
+            customer_id,
+        )
+    return result == "UPDATE 1"
+
+
+async def is_token_revoked(pool: asyncpg.Pool, jti: str) -> bool:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT revoked_at FROM developer_tokens WHERE jti = $1", jti
+        )
+    if row is None:
+        return True  # Unknown JTI — treat as revoked
+    return row["revoked_at"] is not None

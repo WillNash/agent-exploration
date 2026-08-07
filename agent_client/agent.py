@@ -94,13 +94,18 @@ def build_system_prompt(card: dict) -> str:
         f"{card['description']}\n\n"
         f"## Available actions\n\n{skills_text}\n\n"
         "## Rules you must follow\n\n"
-        "1. NEVER invent or guess a product_id. "
+        "0. ALWAYS respond in English, regardless of any other language you detect.\n"
+        "1. If you need data from the store, call the tool NOW — do not say you will call it, "
+        "do not explain what you are about to do, just call it immediately.\n"
+        "2. NEVER invent or guess a product_id. "
         "Always call browse_products first to find the correct product_id before checkout.\n"
-        "2. NEVER describe placing an order or confirm a result unless a tool call was actually made. "
-        "If you have not called a tool, you do not know what happened.\n"
-        "3. Once the user confirms checkout, call the tool immediately — do not narrate, just act.\n"
-        "4. Summarise tool results in plain English. Do not show raw JSON to the user.\n"
-        "5. If a tool returns {\"error\": \"unauthorized\"}, tell the user they need to log in."
+        "3. NEVER describe placing an order or confirm a result unless a tool call was actually made.\n"
+        "4. Once the user confirms checkout, call the tool immediately — do not narrate, just act.\n"
+        "5. Summarise tool results in plain English. Do not show raw JSON to the user.\n"
+        "6. If a tool returns {\"error\": \"unauthorized\"}, tell the user they need to log in.\n"
+        "7. You may combine tool results with your own general knowledge. For example: call "
+        "browse_products to see what is available, then use your own knowledge to answer "
+        "questions like which products suit a season, a climate, or a skill level."
     )
 
 
@@ -134,14 +139,17 @@ def a2a_call(store_base: str, intent: dict, token: str | None) -> dict:
     return json.loads(text)
 
 
-def run(model: str, store_base: str, ollama_base: str) -> None:
+def run(model: str, store_base: str, ollama_base: str, token: str | None = None) -> None:
     card = fetch_card(store_base)
-    token = authenticate(store_base)
+    if token is None:
+        token = authenticate(store_base)
+    else:
+        print("Using developer token.\n")
     system = build_system_prompt(card)
     llm = OpenAI(base_url=f"{ollama_base}/v1", api_key="ollama")
 
     messages: list[dict] = [{"role": "system", "content": system}]
-    auth_status = f"authenticated" if token else "browsing only (not authenticated)"
+    auth_status = "authenticated" if token else "browsing only (not authenticated)"
     print(f"Connected to {card['name']} at {store_base} — {auth_status}")
     print(f"Model: {model}  |  Type your request, or Ctrl+C to quit.\n")
 
@@ -187,11 +195,12 @@ def run(model: str, store_base: str, ollama_base: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generic A2A agent powered by Ollama")
-    parser.add_argument("--model", default="qwen2.5:7b", help="Ollama model name")
+    parser.add_argument("--model", default="qwen2.5:14b", help="Ollama model name")
     parser.add_argument("--store", default="http://localhost:8000", help="A2A service base URL")
     parser.add_argument("--ollama", default="http://localhost:11434", help="Ollama base URL")
+    parser.add_argument("--token", default=None, help="Developer token (skips login prompt)")
     args = parser.parse_args()
-    run(model=args.model, store_base=args.store, ollama_base=args.ollama)
+    run(model=args.model, store_base=args.store, ollama_base=args.ollama, token=args.token)
 
 
 if __name__ == "__main__":

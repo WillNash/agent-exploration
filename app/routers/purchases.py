@@ -6,7 +6,7 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.auth import current_user
+from app.auth import require_user
 from app.database import get_pool
 from app.services import (
     CheckoutItem,
@@ -17,13 +17,6 @@ from app.services import (
 )
 
 router = APIRouter(prefix="/api/purchases", tags=["purchases"])
-
-
-def _require_auth() -> dict[str, Any]:
-    user = current_user.get()
-    if user is None:
-        raise HTTPException(status_code=401, detail="not_authenticated")
-    return user
 
 
 class PurchaseItemIn(BaseModel):
@@ -38,7 +31,7 @@ class PurchaseIn(BaseModel):
 @router.get("/mine")
 async def get_my_purchases(
     pool: asyncpg.Pool = Depends(get_pool),
-    user: dict[str, Any] = Depends(_require_auth),
+    user: dict[str, Any] = Depends(require_user),
 ) -> list[dict[str, Any]]:
     return await list_purchases(pool, int(user["sub"]))
 
@@ -55,7 +48,7 @@ async def get_purchases(
 async def create_purchase(
     body: PurchaseIn,
     pool: asyncpg.Pool = Depends(get_pool),
-    user: dict[str, Any] = Depends(_require_auth),
+    user: dict[str, Any] = Depends(require_user),
 ) -> dict[str, Any]:
     try:
         return await checkout(

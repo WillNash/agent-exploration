@@ -25,6 +25,18 @@ CREATE TABLE customer_purchases (
 
 CREATE INDEX idx_purchases_customer ON customer_purchases(customer_id);
 
+CREATE TABLE developer_tokens (
+    id          SERIAL PRIMARY KEY,
+    customer_id INT NOT NULL REFERENCES customers(id),
+    name        TEXT NOT NULL,
+    jti         TEXT UNIQUE NOT NULL,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    revoked_at  TIMESTAMPTZ
+);
+
+CREATE INDEX idx_dev_tokens_customer ON developer_tokens(customer_id);
+CREATE INDEX idx_dev_tokens_jti      ON developer_tokens(jti);
+
 -- Seed products
 INSERT INTO products (name, description, price, category, stock_qty) VALUES
     ('Tomato Seeds (Heirloom)',    'Heritage beefsteak variety, excellent flavour',       3.50,  'seeds',       200),

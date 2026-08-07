@@ -6,18 +6,24 @@ import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.auth import current_user
 from app.database import get_pool
 from app.services import (
     CheckoutItem,
-    CustomerNotFoundError,
     InsufficientStockError,
     ProductNotFoundError,
     checkout,
-    get_customer_by_email,
     list_purchases,
 )
 
 router = APIRouter(prefix="/api/purchases", tags=["purchases"])
+
+
+def _require_auth() -> dict[str, Any]:
+    user = current_user.get()
+    if user is None:
+        raise HTTPException(status_code=401, detail="not_authenticated")
+    return user
 
 
 class PurchaseItemIn(BaseModel):
@@ -26,8 +32,15 @@ class PurchaseItemIn(BaseModel):
 
 
 class PurchaseIn(BaseModel):
-    customer_email: str
     items: list[PurchaseItemIn]
+
+
+@router.get("/mine")
+async def get_my_purchases(
+    pool: asyncpg.Pool = Depends(get_pool),
+    user: dict[str, Any] = Depends(_require_auth),
+) -> list[dict[str, Any]]:
+    return await list_purchases(pool, int(user["sub"]))
 
 
 @router.get("/{customer_id}")
@@ -42,15 +55,14 @@ async def get_purchases(
 async def create_purchase(
     body: PurchaseIn,
     pool: asyncpg.Pool = Depends(get_pool),
+    user: dict[str, Any] = Depends(_require_auth),
 ) -> dict[str, Any]:
     try:
         return await checkout(
             pool,
-            customer_email=body.customer_email,
+            customer_id=int(user["sub"]),
             items=[CheckoutItem(product_id=i.product_id, quantity=i.quantity) for i in body.items],
         )
-    except CustomerNotFoundError:
-        raise HTTPException(status_code=404, detail="Customer not found")
     except ProductNotFoundError as e:
         raise HTTPException(status_code=404, detail=f"Product {e.product_id} not found")
     except InsufficientStockError as e:

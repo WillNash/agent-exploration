@@ -24,7 +24,7 @@
   </header>
 
   <main>
-    <RouterView />
+    <RouterView @open-auth="openAuth" />
   </main>
 
   <AuthModal

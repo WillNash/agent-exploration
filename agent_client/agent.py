@@ -16,13 +16,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import sys
 
 import httpx
 from openai import OpenAI
 
-# Single generic tool — the LLM constructs the intent from the card description.
 TOOLS: list[dict] = [
     {
         "type": "function",
@@ -56,6 +56,29 @@ def fetch_card(store_base: str) -> dict:
     return r.json()
 
 
+def authenticate(store_base: str) -> str | None:
+    """Prompt for credentials and return a Bearer token, or None to skip."""
+    print("\nThis store requires authentication for checkout and purchase history.")
+    print("Press Enter to skip (browsing still works without login).\n")
+    email = input("Email (or Enter to skip): ").strip()
+    if not email:
+        return None
+    password = getpass.getpass("Password: ")
+    r = httpx.post(
+        f"{store_base}/auth/login",
+        json={"email": email, "password": password},
+        timeout=10,
+    )
+    if r.status_code == 401:
+        print("Invalid credentials — continuing without authentication.")
+        return None
+    r.raise_for_status()
+    token = r.json()["access_token"]
+    name = r.json()["customer"]["name"]
+    print(f"Signed in as {name}.\n")
+    return token
+
+
 def build_system_prompt(card: dict) -> str:
     skills = card.get("skills", [])
     skills_text = "\n\n".join(
@@ -70,18 +93,26 @@ def build_system_prompt(card: dict) -> str:
         f"You are a helpful assistant for {card['name']}.\n\n"
         f"{card['description']}\n\n"
         f"## Available actions\n\n{skills_text}\n\n"
-        "Use the call_agent tool to send intents. "
-        "Summarise results clearly — do not dump raw JSON at the user. "
-        "Always confirm the items and total with the user before calling checkout."
+        "## Rules you must follow\n\n"
+        "1. NEVER invent or guess a product_id. "
+        "Always call browse_products first to find the correct product_id before checkout.\n"
+        "2. NEVER describe placing an order or confirm a result unless a tool call was actually made. "
+        "If you have not called a tool, you do not know what happened.\n"
+        "3. Once the user confirms checkout, call the tool immediately — do not narrate, just act.\n"
+        "4. Summarise tool results in plain English. Do not show raw JSON to the user.\n"
+        "5. If a tool returns {\"error\": \"unauthorized\"}, tell the user they need to log in."
     )
 
 
 _rpc_seq = 0
 
 
-def a2a_call(store_base: str, intent: dict) -> dict:
+def a2a_call(store_base: str, intent: dict, token: str | None) -> dict:
     global _rpc_seq
     _rpc_seq += 1
+    headers = {"Content-Type": "application/json", "A2A-Version": "1.0"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     payload = {
         "jsonrpc": "2.0",
         "id": f"agent-{_rpc_seq}",
@@ -94,12 +125,7 @@ def a2a_call(store_base: str, intent: dict) -> dict:
             }
         },
     }
-    r = httpx.post(
-        f"{store_base}/rpc",
-        json=payload,
-        headers={"Content-Type": "application/json", "A2A-Version": "1.0"},
-        timeout=30,
-    )
+    r = httpx.post(f"{store_base}/rpc", json=payload, headers=headers, timeout=30)
     r.raise_for_status()
     envelope = r.json()
     if "error" in envelope:
@@ -110,11 +136,13 @@ def a2a_call(store_base: str, intent: dict) -> dict:
 
 def run(model: str, store_base: str, ollama_base: str) -> None:
     card = fetch_card(store_base)
+    token = authenticate(store_base)
     system = build_system_prompt(card)
     llm = OpenAI(base_url=f"{ollama_base}/v1", api_key="ollama")
 
     messages: list[dict] = [{"role": "system", "content": system}]
-    print(f"Connected to {card['name']} at {store_base}")
+    auth_status = f"authenticated" if token else "browsing only (not authenticated)"
+    print(f"Connected to {card['name']} at {store_base} — {auth_status}")
     print(f"Model: {model}  |  Type your request, or Ctrl+C to quit.\n")
 
     while True:
@@ -147,7 +175,7 @@ def run(model: str, store_base: str, ollama_base: str) -> None:
                 args = json.loads(tc.function.arguments)
                 intent = args.get("intent", args)
                 print(f"  → {json.dumps(intent)}")
-                result = a2a_call(store_base, intent)
+                result = a2a_call(store_base, intent, token)
                 summary = json.dumps(result)
                 print(f"  ← {summary[:120]}{'…' if len(summary) > 120 else ''}")
                 messages.append({

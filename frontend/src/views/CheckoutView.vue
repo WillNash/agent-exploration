@@ -4,7 +4,7 @@
 
     <div v-if="confirmed" class="confirmation">
       <h2>Order confirmed!</h2>
-      <p>Thank you, {{ confirmedName }}. Your order total was <strong>£{{ orderTotal }}</strong>.</p>
+      <p>Thank you, {{ current.name }}. Your order total was <strong>£{{ orderTotal }}</strong>.</p>
       <table>
         <thead>
           <tr><th>Product</th><th>Qty</th><th>Line total</th></tr>
@@ -28,6 +28,14 @@
         <RouterLink to="/">Browse products</RouterLink>
       </p>
 
+      <template v-else-if="!isLoggedIn">
+        <div class="sign-in-prompt">
+          <p>Please sign in to complete your purchase.</p>
+          <button class="btn-primary" @click="$emit('open-auth', 'signin')">Sign in</button>
+          <button class="btn-secondary" style="margin-left:0.5rem" @click="$emit('open-auth', 'register')">Create account</button>
+        </div>
+      </template>
+
       <template v-else>
         <div class="summary">
           <h2>Order summary</h2>
@@ -41,20 +49,10 @@
         </div>
 
         <form @submit.prevent="submit">
-          <div v-if="isLoggedIn" class="logged-in-as">
+          <div class="logged-in-as">
             <span>Checking out as <strong>{{ current.name }}</strong> ({{ current.email }})</span>
             <span class="not-you">Not you? Sign out from the menu above.</span>
           </div>
-          <template v-else>
-            <div class="field">
-              <label for="name">Full name</label>
-              <input id="name" v-model="name" type="text" required placeholder="Alice Green" />
-            </div>
-            <div class="field">
-              <label for="email">Email</label>
-              <input id="email" v-model="email" type="email" required placeholder="alice@example.com" />
-            </div>
-          </template>
           <p v-if="error" class="error">{{ error }}</p>
           <button class="btn-primary" type="submit" :disabled="submitting">
             {{ submitting ? 'Placing order…' : 'Place order' }}
@@ -68,19 +66,18 @@
 <script setup>
 import { ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { createCustomer, a2aRpc } from '../api/client.js'
+import { a2aRpc } from '../api/client.js'
 import { useCart } from '../stores/cart.js'
 import { useUser } from '../stores/user.js'
 
-const { items, cartTotal, clearCart } = useCart()
-const { current, isLoggedIn, login } = useUser()
+defineEmits(['open-auth'])
 
-const name = ref('')
-const email = ref('')
+const { items, cartTotal, clearCart } = useCart()
+const { current, isLoggedIn } = useUser()
+
 const submitting = ref(false)
 const error = ref(null)
 const confirmed = ref(false)
-const confirmedName = ref('')
 const confirmedItems = ref([])
 const orderTotal = ref('0.00')
 
@@ -88,17 +85,8 @@ async function submit() {
   submitting.value = true
   error.value = null
   try {
-    const customerEmail = isLoggedIn.value ? current.value.email : email.value
-    const customerName = isLoggedIn.value ? current.value.name : name.value
-
-    if (!isLoggedIn.value) {
-      const customer = await createCustomer({ name: customerName, email: customerEmail })
-      login(customer)
-    }
-
     const intent = {
       action: 'checkout',
-      customer_email: customerEmail,
       items: items.value.map((i) => ({
         product_id: i.product.id,
         quantity: i.quantity,
@@ -106,14 +94,12 @@ async function submit() {
     }
 
     const task = await a2aRpc(JSON.stringify(intent))
-
     const artifactText = task?.message?.parts?.[0]?.text
     if (!artifactText) throw new Error('No response from agent')
 
     const result = JSON.parse(artifactText)
     if (result.error) throw new Error(result.error)
 
-    confirmedName.value = customerName
     confirmedItems.value = result.items ?? []
     orderTotal.value = (result.order_total ?? 0).toFixed(2)
     confirmed.value = true
@@ -144,6 +130,21 @@ async function submit() {
   padding: 0.5rem 0.75rem;
   text-align: left;
   border-bottom: 1px solid #c5e8a8;
+}
+
+.sign-in-prompt {
+  background: #fff;
+  border: 1px solid #dce8cc;
+  border-radius: 10px;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.sign-in-prompt p {
+  margin: 0;
+  flex: 1;
 }
 
 .summary {
@@ -192,21 +193,5 @@ form {
 .not-you {
   font-size: 0.78rem;
   color: #7a9a6a;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-label {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #3a5c2c;
-}
-
-input {
-  width: 100%;
 }
 </style>

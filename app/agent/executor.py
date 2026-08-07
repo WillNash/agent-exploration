@@ -12,7 +12,6 @@ from a2a.server.events import EventQueue
 from app.agent.intents import (
     BrowseProductsIntent,
     CheckoutIntent,
-    CreateCustomerIntent,
     GetProductIntent,
     Intent,
     ListCategoriesIntent,
@@ -20,18 +19,16 @@ from app.agent.intents import (
     UnknownIntent,
     parse_intent,
 )
+from app.auth import current_user
 from app.services import (
     CheckoutItem,
-    CustomerNotFoundError,
     InsufficientStockError,
     ProductNotFoundError,
     browse_products,
     checkout,
-    get_customer_by_email,
     get_product,
     list_categories,
     list_purchases,
-    upsert_customer,
 )
 
 _HELP = {
@@ -39,16 +36,23 @@ _HELP = {
         {"action": "list_categories", "params": {}},
         {"action": "browse_products", "params": {"category": "optional string", "max_price": "optional number"}},
         {"action": "get_product", "params": {"product_id": "integer"}},
-        {"action": "create_customer", "params": {"name": "string", "email": "string"}},
         {
             "action": "checkout",
-            "params": {
-                "customer_email": "string",
-                "items": [{"product_id": "integer", "quantity": "integer"}],
-            },
+            "params": {"items": [{"product_id": "integer", "quantity": "integer"}]},
+            "note": "Requires a valid Bearer token in the Authorization header.",
         },
-        {"action": "list_purchases", "params": {"customer_email": "string"}},
+        {
+            "action": "list_purchases",
+            "params": {},
+            "note": "Requires a valid Bearer token in the Authorization header.",
+        },
     ]
+}
+
+_UNAUTHORIZED = {
+    "error": "unauthorized",
+    "hint": "Include a valid Bearer token in the Authorization header. "
+            "Obtain one from POST /auth/login with your email and password.",
 }
 
 
@@ -80,31 +84,26 @@ class GardenStoreExecutor(AgentExecutor):
                 if product is None:
                     return {"error": "product_not_found", "product_id": intent.product_id}
                 return product
-            case CreateCustomerIntent():
-                return await upsert_customer(self._pool, name=intent.name, email=intent.email)
             case CheckoutIntent():
                 return await self._checkout(intent)
             case ListPurchasesIntent():
-                return await self._list_purchases(intent)
+                return await self._list_purchases()
             case UnknownIntent():
                 return {"error": "unknown_intent", "help": _HELP}
 
     async def _checkout(self, intent: CheckoutIntent) -> dict[str, Any]:
+        user = current_user.get()
+        if user is None:
+            return _UNAUTHORIZED
         try:
             return await checkout(
                 self._pool,
-                customer_email=intent.customer_email,
+                customer_id=int(user["sub"]),
                 items=[
                     CheckoutItem(product_id=i.product_id, quantity=i.quantity)
                     for i in intent.items
                 ],
             )
-        except CustomerNotFoundError as e:
-            return {
-                "error": "customer_not_found",
-                "email": e.email,
-                "hint": "Call create_customer first with {action: create_customer, name, email}",
-            }
         except ProductNotFoundError as e:
             return {"error": "product_not_found", "product_id": e.product_id}
         except InsufficientStockError as e:
@@ -115,8 +114,8 @@ class GardenStoreExecutor(AgentExecutor):
                 "available": e.available,
             }
 
-    async def _list_purchases(self, intent: ListPurchasesIntent) -> list[dict[str, Any]]:
-        customer = await get_customer_by_email(self._pool, intent.customer_email)
-        if customer is None:
-            return []
-        return await list_purchases(self._pool, customer["id"])
+    async def _list_purchases(self) -> list[dict[str, Any]]:
+        user = current_user.get()
+        if user is None:
+            return _UNAUTHORIZED  # type: ignore[return-value]
+        return await list_purchases(self._pool, int(user["sub"]))

@@ -1,11 +1,22 @@
 const BASE = ''
 
-async function request(method, path, body) {
-  const opts = {
-    method,
-    headers: { 'Content-Type': 'application/json' },
+function getToken() {
+  try {
+    const raw = localStorage.getItem('garden_user')
+    return raw ? JSON.parse(raw).token : null
+  } catch {
+    return null
   }
+}
+
+async function request(method, path, body, { auth = false } = {}) {
+  const headers = { 'Content-Type': 'application/json' }
+  const token = getToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const opts = { method, headers }
   if (body !== undefined) opts.body = JSON.stringify(body)
+
   const res = await fetch(`${BASE}${path}`, opts)
   if (!res.ok) {
     const text = await res.text()
@@ -24,13 +35,11 @@ export const fetchProducts = (params = {}) => {
 
 export const fetchProduct = (id) => request('GET', `/api/products/${id}`)
 
-export const createCustomer = (data) => request('POST', '/api/customers', data)
+export const register = (data) => request('POST', '/auth/register', data)
+export const login = (data) => request('POST', '/auth/login', data)
 
 export const fetchPurchases = (customerId) =>
   request('GET', `/api/purchases/${customerId}`)
-
-export const lookupCustomer = (email) =>
-  request('GET', `/api/customers/lookup?${new URLSearchParams({ email })}`)
 
 let _rpcSeq = 0
 
@@ -38,8 +47,13 @@ export async function a2aRpc(messageText) {
   const id = `rpc-${++_rpcSeq}-${Date.now()}`
   const messageId = `msg-${Date.now()}`
 
-  // SDK uses gRPC-style PascalCase method names. Role and Part shape are
-  // protobuf enum/message names, not the JSON-spec strings used in older docs.
+  const headers = {
+    'Content-Type': 'application/json',
+    'A2A-Version': '1.0',
+  }
+  const token = getToken()
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
   const envelope = {
     jsonrpc: '2.0',
     id,
@@ -55,10 +69,7 @@ export async function a2aRpc(messageText) {
 
   const res = await fetch('/rpc', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'A2A-Version': '1.0',
-    },
+    headers,
     body: JSON.stringify(envelope),
   })
 

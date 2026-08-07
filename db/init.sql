@@ -1,8 +1,9 @@
 CREATE TABLE customers (
-    id         SERIAL PRIMARY KEY,
-    name       TEXT NOT NULL,
-    email      TEXT UNIQUE NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    id            SERIAL PRIMARY KEY,
+    name          TEXT NOT NULL,
+    email         TEXT UNIQUE NOT NULL,
+    password_hash TEXT,
+    created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE products (

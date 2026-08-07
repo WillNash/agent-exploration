@@ -15,10 +15,12 @@ const _current = ref(_load())
 
 export function useUser() {
   const isLoggedIn = computed(() => _current.value !== null)
+  const token = computed(() => _current.value?.token ?? null)
 
-  function login(customer) {
-    _current.value = customer
-    localStorage.setItem(_KEY, JSON.stringify(customer))
+  function login(customer, accessToken) {
+    const stored = { ...customer, token: accessToken }
+    _current.value = stored
+    localStorage.setItem(_KEY, JSON.stringify(stored))
   }
 
   function logout() {
@@ -26,5 +28,5 @@ export function useUser() {
     localStorage.removeItem(_KEY)
   }
 
-  return { current: _current, isLoggedIn, login, logout }
+  return { current: _current, token, isLoggedIn, login, logout }
 }

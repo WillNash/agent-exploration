@@ -18,7 +18,6 @@
         </div>
 
         <form v-if="mode === 'signin'" @submit.prevent="doSignIn">
-          <p class="hint">No password needed — just your email.</p>
           <div class="field">
             <label for="auth-email">Email</label>
             <input
@@ -28,6 +27,16 @@
               required
               autofocus
               placeholder="alice@example.com"
+            />
+          </div>
+          <div class="field">
+            <label for="auth-password">Password</label>
+            <input
+              id="auth-password"
+              v-model="password"
+              type="password"
+              required
+              placeholder="••••••••"
             />
           </div>
           <p v-if="error" class="error">{{ error }}</p>
@@ -40,7 +49,7 @@
           </p>
         </form>
 
-        <form v-else @submit.prevent="doCreate">
+        <form v-else @submit.prevent="doRegister">
           <div class="field">
             <label for="auth-name">Full name</label>
             <input
@@ -62,6 +71,16 @@
               placeholder="alice@example.com"
             />
           </div>
+          <div class="field">
+            <label for="auth-password2">Password</label>
+            <input
+              id="auth-password2"
+              v-model="password"
+              type="password"
+              required
+              placeholder="••••••••"
+            />
+          </div>
           <p v-if="error" class="error">{{ error }}</p>
           <button class="btn-primary submit-btn" type="submit" :disabled="loading">
             {{ loading ? 'Creating…' : 'Create account' }}
@@ -78,7 +97,7 @@
 
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
-import { createCustomer, lookupCustomer } from '../api/client.js'
+import { login, register } from '../api/client.js'
 import { useUser } from '../stores/user.js'
 
 const props = defineProps({
@@ -86,44 +105,48 @@ const props = defineProps({
 })
 const emit = defineEmits(['close'])
 
-const { login } = useUser()
+const { login: storeLogin } = useUser()
 
 const mode = ref(props.initialMode)
 const name = ref('')
 const email = ref('')
+const password = ref('')
 const error = ref(null)
 const loading = ref(false)
 
 function switchMode(m) {
   mode.value = m
   error.value = null
+  password.value = ''
 }
 
 async function doSignIn() {
   loading.value = true
   error.value = null
   try {
-    const customer = await lookupCustomer(email.value)
-    login(customer)
+    const { access_token, customer } = await login({ email: email.value, password: password.value })
+    storeLogin(customer, access_token)
     emit('close')
   } catch (e) {
-    error.value = e.message.startsWith('404')
-      ? 'No account found with that email.'
-      : e.message
+    error.value = e.message.startsWith('401') ? 'Invalid email or password.' : e.message
   } finally {
     loading.value = false
   }
 }
 
-async function doCreate() {
+async function doRegister() {
   loading.value = true
   error.value = null
   try {
-    const customer = await createCustomer({ name: name.value, email: email.value })
-    login(customer)
+    const { access_token, customer } = await register({
+      name: name.value,
+      email: email.value,
+      password: password.value,
+    })
+    storeLogin(customer, access_token)
     emit('close')
   } catch (e) {
-    error.value = e.message
+    error.value = e.message.startsWith('409') ? 'An account with that email already exists.' : e.message
   } finally {
     loading.value = false
   }
@@ -173,7 +196,6 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 .tabs {
   display: flex;
-  gap: 0;
   margin-bottom: 1.25rem;
   border-bottom: 2px solid #e0ead4;
 }
@@ -201,12 +223,6 @@ form {
   gap: 0.75rem;
 }
 
-.hint {
-  font-size: 0.82rem;
-  color: #6a8a5a;
-  margin: 0;
-}
-
 .field {
   display: flex;
   flex-direction: column;
@@ -219,9 +235,7 @@ label {
   color: #3a5c2c;
 }
 
-input {
-  width: 100%;
-}
+input { width: 100%; }
 
 .submit-btn {
   width: 100%;

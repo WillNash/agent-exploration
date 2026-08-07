@@ -22,12 +22,6 @@ class ListCategoriesIntent:
 
 
 @dataclass(slots=True, frozen=True)
-class CreateCustomerIntent:
-    name: str
-    email: str
-
-
-@dataclass(slots=True, frozen=True)
 class CheckoutItemIntent:
     product_id: int
     quantity: int
@@ -35,13 +29,14 @@ class CheckoutItemIntent:
 
 @dataclass(slots=True, frozen=True)
 class CheckoutIntent:
-    customer_email: str
+    # customer_email removed — identity comes from the Bearer token
     items: tuple[CheckoutItemIntent, ...]
 
 
 @dataclass(slots=True, frozen=True)
 class ListPurchasesIntent:
-    customer_email: str
+    # customer_email removed — identity comes from the Bearer token
+    pass
 
 
 @dataclass(slots=True, frozen=True)
@@ -53,7 +48,6 @@ Intent = (
     BrowseProductsIntent
     | GetProductIntent
     | ListCategoriesIntent
-    | CreateCustomerIntent
     | CheckoutIntent
     | ListPurchasesIntent
     | UnknownIntent
@@ -80,15 +74,10 @@ def parse_intent(text: str) -> Intent:
             return GetProductIntent(product_id=int(data["product_id"]))
         case "list_categories":
             return ListCategoriesIntent()
-        case "create_customer":
-            if "name" not in data or "email" not in data:
-                return UnknownIntent(raw_text=text)
-            return CreateCustomerIntent(name=str(data["name"]), email=str(data["email"]))
         case "checkout":
-            if "customer_email" not in data or "items" not in data:
+            if "items" not in data:
                 return UnknownIntent(raw_text=text)
             return CheckoutIntent(
-                customer_email=data["customer_email"],
                 items=tuple(
                     CheckoutItemIntent(
                         product_id=int(i["product_id"]),
@@ -98,8 +87,6 @@ def parse_intent(text: str) -> Intent:
                 ),
             )
         case "list_purchases":
-            if "customer_email" not in data:
-                return UnknownIntent(raw_text=text)
-            return ListPurchasesIntent(customer_email=data["customer_email"])
+            return ListPurchasesIntent()
         case _:
             return UnknownIntent(raw_text=text)

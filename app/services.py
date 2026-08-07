@@ -9,13 +9,13 @@ from app.models import row_to_dict
 
 
 # ---------------------------------------------------------------------------
-# Domain exceptions — callers decide how to surface these
+# Domain exceptions
 # ---------------------------------------------------------------------------
 
 class CustomerNotFoundError(Exception):
-    def __init__(self, email: str) -> None:
-        self.email = email
-        super().__init__(f"customer not found: {email}")
+    def __init__(self, identifier: str) -> None:
+        self.identifier = identifier
+        super().__init__(f"customer not found: {identifier}")
 
 
 class ProductNotFoundError(Exception):
@@ -36,7 +36,42 @@ class InsufficientStockError(Exception):
 
 
 # ---------------------------------------------------------------------------
-# Services
+# Auth services
+# ---------------------------------------------------------------------------
+
+async def create_customer_with_password(
+    pool: asyncpg.Pool, *, name: str, email: str, password: str
+) -> dict[str, Any]:
+    from app.auth import hash_password
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO customers (name, email, password_hash)
+            VALUES ($1, $2, $3)
+            RETURNING *
+            """,
+            name,
+            email,
+            hash_password(password),
+        )
+    return row_to_dict(row)
+
+
+async def authenticate_customer(
+    pool: asyncpg.Pool, *, email: str, password: str
+) -> dict[str, Any] | None:
+    from app.auth import verify_password
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM customers WHERE email = $1", email)
+    if row is None or not row["password_hash"]:
+        return None
+    if not verify_password(password, row["password_hash"]):
+        return None
+    return row_to_dict(row)
+
+
+# ---------------------------------------------------------------------------
+# Product services
 # ---------------------------------------------------------------------------
 
 async def list_categories(pool: asyncpg.Pool) -> list[str]:
@@ -79,6 +114,10 @@ async def get_product(pool: asyncpg.Pool, product_id: int) -> dict[str, Any] | N
     return row_to_dict(row) if row is not None else None
 
 
+# ---------------------------------------------------------------------------
+# Customer services
+# ---------------------------------------------------------------------------
+
 async def upsert_customer(
     pool: asyncpg.Pool, *, name: str, email: str
 ) -> dict[str, Any]:
@@ -105,6 +144,18 @@ async def get_customer_by_email(
     return row_to_dict(row) if row is not None else None
 
 
+async def get_customer_by_id(
+    pool: asyncpg.Pool, customer_id: int
+) -> dict[str, Any] | None:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM customers WHERE id = $1", customer_id)
+    return row_to_dict(row) if row is not None else None
+
+
+# ---------------------------------------------------------------------------
+# Purchase services
+# ---------------------------------------------------------------------------
+
 @dataclass(slots=True, frozen=True)
 class CheckoutItem:
     product_id: int
@@ -114,21 +165,14 @@ class CheckoutItem:
 async def checkout(
     pool: asyncpg.Pool,
     *,
-    customer_email: str,
+    customer_id: int,
     items: list[CheckoutItem],
 ) -> dict[str, Any]:
     """
-    Raises CustomerNotFoundError, ProductNotFoundError, or InsufficientStockError
-    on failure. Callers are responsible for mapping these to their error convention.
+    Raises ProductNotFoundError or InsufficientStockError on failure.
+    The customer_id must come from the authenticated session — no lookup performed.
     """
     async with pool.acquire() as conn:
-        customer = await conn.fetchrow(
-            "SELECT id FROM customers WHERE email = $1", customer_email
-        )
-        if customer is None:
-            raise CustomerNotFoundError(customer_email)
-
-        customer_id: int = customer["id"]
         order_rows: list[dict[str, Any]] = []
 
         async with conn.transaction():
@@ -175,7 +219,6 @@ async def checkout(
     return {
         "status": "confirmed",
         "customer_id": customer_id,
-        "customer_email": customer_email,
         "items": order_rows,
         "order_total": round(total, 2),
     }

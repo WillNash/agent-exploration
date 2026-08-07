@@ -102,6 +102,17 @@ The agent fetches `/.well-known/agent-card.json` on startup and builds the entir
 
 The LLM reads the card and figures out what to call and how to call it. The script itself has no knowledge of `browse_products`, `checkout`, or any other action — those exist only in the card.
 
+## A note on Ollama security
+
+By default Ollama binds to `127.0.0.1:11434` — localhost only, not reachable from outside your machine. For this guide that is sufficient and nothing needs to change.
+
+Two common things people do that remove that protection:
+
+- **Binding to `0.0.0.0`** — sometimes suggested to make Ollama accessible from other machines. This exposes the API to your whole local network with no authentication. Anyone who can reach the port can run inference and enumerate your installed models.
+- **Using a tunnel** (ngrok, Cloudflare Tunnel, etc.) — makes the local port reachable from the internet. Same problem.
+
+Avoid both unless you have a specific need, and if you do expose Ollama further, put an authenticating reverse proxy (nginx, Caddy) in front of it first. Ollama itself has no built-in authentication.
+
 ## A note on trust
 
 There is no password on the A2A interface. Anyone who knows a customer's email can place orders as that customer. This is intentional for this demo — the trust model is "if you know the email, you are that customer." A production system would add token-based authentication to the `/rpc` endpoint.

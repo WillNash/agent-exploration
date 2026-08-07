@@ -17,7 +17,7 @@ RUN pip install --no-cache-dir \
     "asyncpg>=0.30.0" \
     "fastapi>=0.115.0" \
     "httpx>=0.28.1" \
-    "passlib[bcrypt]>=1.7.4" \
+    "bcrypt>=4.0.0" \
     "PyJWT>=2.8.0" \
     "python-dotenv>=1.0.0" \
     "uvicorn[standard]>=0.52.1"

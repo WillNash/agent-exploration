@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth import current_user
 from app.database import get_pool
-from app.models import row_to_dict
+from app.models import public_customer, row_to_dict
 from app.services import get_customer_by_id
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
@@ -28,7 +28,7 @@ async def get_me(
     customer = await get_customer_by_id(pool, int(user["sub"]))
     if customer is None:
         raise HTTPException(status_code=404, detail="customer_not_found")
-    return customer
+    return public_customer(customer)
 
 
 @router.get("")
@@ -37,4 +37,4 @@ async def list_customers(
 ) -> list[dict[str, Any]]:
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT * FROM customers ORDER BY name")
-    return [row_to_dict(r) for r in rows]
+    return [public_customer(row_to_dict(r)) for r in rows]

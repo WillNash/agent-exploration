@@ -32,6 +32,9 @@ class PurchaseItem(TypedDict):
     purchased_at: str
 
 
+_CUSTOMER_PRIVATE_FIELDS = frozenset({"password_hash"})
+
+
 def row_to_dict(row: Any) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in dict(row).items():
@@ -42,3 +45,7 @@ def row_to_dict(row: Any) -> dict[str, Any]:
         else:
             result[key] = value
     return result
+
+
+def public_customer(customer: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in customer.items() if k not in _CUSTOMER_PRIVATE_FIELDS}

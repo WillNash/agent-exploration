@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from app.auth import create_token
 from app.database import get_pool
+from app.models import public_customer
 from app.services import authenticate_customer, create_customer_with_password, get_customer_by_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -36,7 +37,7 @@ async def register(
         pool, name=body.name, email=body.email, password=body.password
     )
     token = create_token(customer["id"], customer["email"])
-    return {"access_token": token, "token_type": "bearer", "customer": customer}
+    return {"access_token": token, "token_type": "bearer", "customer": public_customer(customer)}
 
 
 @router.post("/login")
@@ -48,4 +49,4 @@ async def login(
     if customer is None:
         raise HTTPException(status_code=401, detail="invalid_credentials")
     token = create_token(customer["id"], customer["email"])
-    return {"access_token": token, "token_type": "bearer", "customer": customer}
+    return {"access_token": token, "token_type": "bearer", "customer": public_customer(customer)}

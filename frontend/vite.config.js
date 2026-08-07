@@ -14,6 +14,7 @@ export default defineConfig({
     proxy: {
       // No rewrite on any entry — the backend router prefixes are preserved as-is.
       '/api':         { target: backendOrigin, changeOrigin: true },
+      '/auth':        { target: backendOrigin, changeOrigin: true },
       '/.well-known': { target: backendOrigin, changeOrigin: true },
       '/rpc':         { target: backendOrigin, changeOrigin: true },
     },

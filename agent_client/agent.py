@@ -182,6 +182,12 @@ def run(model: str, store_base: str, ollama_base: str, token: str | None = None)
             for tc in msg.tool_calls:
                 args = json.loads(tc.function.arguments)
                 intent = args.get("intent", args)
+                # Some models double-encode intent as a JSON string rather than an object
+                if isinstance(intent, str):
+                    try:
+                        intent = json.loads(intent)
+                    except json.JSONDecodeError:
+                        pass
                 print(f"  → {json.dumps(intent)}")
                 result = a2a_call(store_base, intent, token)
                 summary = json.dumps(result)

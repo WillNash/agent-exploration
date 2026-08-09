@@ -182,12 +182,16 @@ def run(model: str, store_base: str, ollama_base: str, token: str | None = None)
             for tc in msg.tool_calls:
                 args = json.loads(tc.function.arguments)
                 intent = args.get("intent", args)
-                # Some models double-encode intent as a JSON string rather than an object
+                # Some models encode intent as a string (JSON or Python repr) rather than an object
                 if isinstance(intent, str):
                     try:
                         intent = json.loads(intent)
                     except json.JSONDecodeError:
-                        pass
+                        import ast
+                        try:
+                            intent = ast.literal_eval(intent)
+                        except (ValueError, SyntaxError):
+                            pass
                 print(f"  → {json.dumps(intent)}")
                 result = a2a_call(store_base, intent, token)
                 summary = json.dumps(result)
@@ -201,7 +205,7 @@ def run(model: str, store_base: str, ollama_base: str, token: str | None = None)
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generic A2A agent powered by Ollama")
-    parser.add_argument("--model", default="llama3.1:8b", help="Ollama model name")
+    parser.add_argument("--model", default="llama3.1:70b", help="Ollama model name")
     parser.add_argument("--store", default="http://localhost:8000", help="A2A service base URL")
     parser.add_argument("--ollama", default="http://localhost:11434", help="Ollama base URL")
     parser.add_argument("--token", default=None, help="Developer token (skips login prompt)")

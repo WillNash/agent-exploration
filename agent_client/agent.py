@@ -112,7 +112,7 @@ def build_system_prompt(card: dict) -> str:
 _rpc_seq = 0
 
 
-def a2a_call(store_base: str, intent: dict, token: str | None) -> dict:
+def a2a_call(store_base: str, intent: dict, token: str | None) -> str:
     global _rpc_seq
     _rpc_seq += 1
     headers = {"Content-Type": "application/json", "A2A-Version": "1.0"}
@@ -134,9 +134,11 @@ def a2a_call(store_base: str, intent: dict, token: str | None) -> dict:
     r.raise_for_status()
     envelope = r.json()
     if "error" in envelope:
-        return {"error": envelope["error"]}
-    text = envelope["result"]["message"]["parts"][0]["text"]
-    return json.loads(text)
+        return json.dumps(envelope["error"])
+    try:
+        return envelope["result"]["message"]["parts"][0]["text"]
+    except (IndexError, KeyError):
+        return "Error: unexpected response structure from server."
 
 
 def run(model: str, store_base: str, ollama_base: str, token: str | None = None) -> None:
@@ -165,42 +167,50 @@ def run(model: str, store_base: str, ollama_base: str, token: str | None = None)
 
         messages.append({"role": "user", "content": user_input})
 
-        while True:
-            response = llm.chat.completions.create(
-                model=model,
-                messages=messages,
-                tools=TOOLS,
-                tool_choice="auto",
-            )
-            msg = response.choices[0].message
-            messages.append(msg)
+        try:
+            while True:
+                response = llm.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    tools=TOOLS,
+                    tool_choice="auto",
+                )
+                msg = response.choices[0].message
+                messages.append(msg)
 
-            if not msg.tool_calls:
-                print(f"\nAgent: {msg.content}\n")
-                break
+                if not msg.tool_calls:
+                    print(f"\nAgent: {msg.content}\n")
+                    break
 
-            for tc in msg.tool_calls:
-                args = json.loads(tc.function.arguments)
-                intent = args.get("intent", args)
-                # Some models encode intent as a string (JSON or Python repr) rather than an object
-                if isinstance(intent, str):
+                for tc in msg.tool_calls:
                     try:
-                        intent = json.loads(intent)
+                        args = json.loads(tc.function.arguments)
                     except json.JSONDecodeError:
-                        import ast
+                        print(f"  ! malformed tool arguments, skipping: {tc.function.arguments[:80]}")
+                        messages.append({"role": "tool", "tool_call_id": tc.id, "content": "Error: malformed tool arguments."})
+                        continue
+                    intent = args.get("intent", args)
+                    # Some models encode intent as a string (JSON or Python repr) rather than an object
+                    if isinstance(intent, str):
                         try:
-                            intent = ast.literal_eval(intent)
-                        except (ValueError, SyntaxError):
-                            pass
-                print(f"  → {json.dumps(intent)}")
-                result = a2a_call(store_base, intent, token)
-                summary = json.dumps(result)
-                print(f"  ← {summary[:120]}{'…' if len(summary) > 120 else ''}")
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": json.dumps(result),
-                })
+                            intent = json.loads(intent)
+                        except json.JSONDecodeError:
+                            import ast
+                            try:
+                                intent = ast.literal_eval(intent)
+                            except (ValueError, SyntaxError):
+                                pass
+                    print(f"  → {json.dumps(intent)}")
+                    result = a2a_call(store_base, intent, token)
+                    print(f"  ← {result[:120]}{'…' if len(result) > 120 else ''}")
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": result,
+                    })
+        except Exception as exc:
+            print(f"\n[Error: {exc} — your message was not sent, please try again.]\n")
+            messages.pop()
 
 
 def main() -> None:

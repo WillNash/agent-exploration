@@ -28,6 +28,8 @@ services:
       APP_HOST: 0.0.0.0
       APP_PORT: "8000"
       FRONTEND_ORIGIN: http://localhost:5173
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: llama3.1:70b
     depends_on:
       db:
         condition: service_healthy

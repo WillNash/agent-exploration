@@ -20,7 +20,8 @@ RUN pip install --no-cache-dir \
     "bcrypt>=4.0.0" \
     "PyJWT>=2.8.0" \
     "python-dotenv>=1.0.0" \
-    "uvicorn[standard]>=0.52.1"
+    "uvicorn[standard]>=0.52.1" \
+    "openai>=1.0.0"
 
 COPY app/ ./app/
 

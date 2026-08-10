@@ -173,7 +173,6 @@ def run(model: str, store_base: str, ollama_base: str, token: str | None = None)
                     model=model,
                     messages=messages,
                     tools=TOOLS,
-                    tool_choice="auto",
                 )
                 msg = response.choices[0].message
                 messages.append(msg)

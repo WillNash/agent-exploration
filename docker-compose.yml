@@ -30,6 +30,8 @@ services:
       FRONTEND_ORIGIN: http://localhost:5173
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       OLLAMA_MODEL: llama3.1:70b
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy

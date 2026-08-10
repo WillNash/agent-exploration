@@ -130,7 +130,7 @@ def a2a_call(store_base: str, intent: dict, token: str | None) -> str:
             }
         },
     }
-    r = httpx.post(f"{store_base}/rpc", json=payload, headers=headers, timeout=30)
+    r = httpx.post(f"{store_base}/rpc", json=payload, headers=headers, timeout=300)
     r.raise_for_status()
     envelope = r.json()
     if "error" in envelope:

@@ -214,7 +214,7 @@ def run(model: str, store_base: str, ollama_base: str, token: str | None = None)
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generic A2A agent powered by Ollama")
-    parser.add_argument("--model", default="llama3.1:70b", help="Ollama model name")
+    parser.add_argument("--model", default="llama3.1:8b", help="Ollama model name")
     parser.add_argument("--store", default="http://localhost:8000", help="A2A service base URL")
     parser.add_argument("--ollama", default="http://localhost:11434", help="Ollama base URL")
     parser.add_argument("--token", default=None, help="Developer token (skips login prompt)")
